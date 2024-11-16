@@ -1,0 +1,7 @@
+pandas
+asyncio
+plotly
+numpy
+shinywidgets
+shiny
+scikit-spatial
