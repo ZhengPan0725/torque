@@ -11,13 +11,13 @@ app_ui = ui.page_sidebar(
     ui.sidebar(
         ui.input_file("file_input", "Upload FHI-aims output files", multiple=True),
         ui.input_text("atom_selection", "Select atoms (e.g., 1, 3-5, 8)", placeholder="Enter atoms"),
-        ui.input_action_button("calculate_button", "Calculate Momentum")
+        ui.input_switch("input_axis", "Custom Axis Input", True),
+        ui.output_ui("axis_input_panel"),
+        ui.input_action_button("calculate_button", "Calculate Momentum"),
     ),
     ui.card(
         output_widget("geometry_plot"),
         ui.output_text_verbatim("momentum_output"),
-#        ui.output_text_verbatim("geometry_debug"),
-#        ui.output_text_verbatim("forces_debug")
     )
 )
 
@@ -87,30 +87,43 @@ def extract_forces(file_content):
     return forces_block
 
 # Function to calculate the total momentum
-def calculate_momentum(geometry, forces, selected_atoms):
+def calculate_momentum(geometry, forces, selected_atoms, custom_axis = False, chosen_id = None):
     # Calculate the position of Cr and the center of selected six Carbon atoms
-    cr_position = None
-    carbon_positions = []
+    if custom_axis:
+        chosen_positions = []
+        for i, line in enumerate(geometry):
+            if i + 1 in chosen_id:
+                parts = line.split()
+                x, y, z = map(float, parts[1:4])
+                chosen_positions.append(np.array([x, y, z]))
+        if len(chosen_positions) != 2:
+            raise ValueError("chosen_position is not 2!")
+        else:
+            axis_direction = chosen_positions[0] - chosen_positions[1]
+            cr_position = chosen_positions[0]
+    else:
+        cr_position = None
+        carbon_positions = []
 
-    for i, line in enumerate(geometry):
-        parts = line.split()
-        x, y, z = map(float, parts[1:4])
-        element = parts[4]
-        if element == "Cr":
-            cr_position = np.array([x, y, z])
-        elif element == "C" and i + 1 in selected_atoms:
-            carbon_positions.append(np.array([x, y, z]))
+        for i, line in enumerate(geometry):
+            parts = line.split()
+            x, y, z = map(float, parts[1:4])
+            element = parts[4]
+            if element == "Cr":
+                cr_position = np.array([x, y, z])
+            elif element == "C" and i + 1 in selected_atoms:
+                carbon_positions.append(np.array([x, y, z]))
 
-    if len(carbon_positions) < 6:
-        raise ValueError("Not enough Carbon atoms for axis calculation.")
+        if len(carbon_positions) < 6:
+            raise ValueError("Not enough Carbon atoms for axis calculation.")
 
-    if cr_position is None:
-        raise ValueError("Cr needed to specify the axis")
+        if cr_position is None:
+            raise ValueError("Cr needed to specify the axis")
 
-    # Calculate the center of the six Carbon atoms
-    carbon_center = np.mean(carbon_positions, axis=0)
+        # Calculate the center of the six Carbon atoms
+        carbon_center = np.mean(carbon_positions, axis=0)
+        axis_direction = carbon_center - cr_position
 
-    axis_direction = carbon_center - cr_position
     axis_direction /= np.linalg.norm(axis_direction)  # Normalize the axis direction
 
     # Calculate the total momentum with respect to the axis
@@ -128,6 +141,7 @@ def calculate_momentum(geometry, forces, selected_atoms):
 
 # Server logic
 def server(input, output, session):
+
     @render_widget
     @reactive.event(input.calculate_button)
     def geometry_plot():
@@ -176,10 +190,20 @@ def server(input, output, session):
         if not forces:
             return "No forces data found."
         try:
-            total_momentum = calculate_momentum(geometry, forces, selected_atoms)
+            custom_axis = input.input_axis()
+            if custom_axis:
+                chosen_id = [int(x) for x in input.chosen_id().split(",")]
+            total_momentum = calculate_momentum(geometry, forces, selected_atoms, custom_axis, chosen_id)
             return f"Total Momentum: {total_momentum} (eV)"
         except ValueError as e:
             return str(e)
+
+    @render.ui
+    @reactive.event(input.input_axis)
+    def axis_input_panel():
+        if input.input_axis():
+            return ui.input_text("chosen_id", "Enter two number(e.g. 1,2)")
+
 # Create the app
 app = App(app_ui, server)
 
