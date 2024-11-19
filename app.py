@@ -5,6 +5,7 @@ from shinywidgets import output_widget, render_widget
 import numpy as np
 import re
 from skspatial.objects import Plane
+import pandas as pd
 
 # Define UI components
 app_ui = ui.page_sidebar(
@@ -13,7 +14,7 @@ app_ui = ui.page_sidebar(
         ui.input_text("atom_selection", "Select atoms (e.g., 1, 3-5, 8)", placeholder="Enter atoms"),
         ui.input_switch("input_axis", "Custom Axis Input", True),
         ui.output_ui("axis_input_panel"),
-        ui.input_action_button("calculate_button", "Calculate Momentum"),
+        ui.input_action_button("calculate_button", "Calculate Torque"),
     ),
     ui.card(
         output_widget("geometry_plot"),
@@ -66,10 +67,12 @@ def extract_geometry(file_content):
 def extract_forces(file_content):
     forces_block = []
     parsing_forces = False
+    line_detected = False
 
     lines = file_content.splitlines()
     for idx, line in enumerate(lines):
-        if "Total atomic forces (unitary forces cleaned) [eV/Ang]:" in line and not forces_block:
+        line_detected = "Total atomic forces (unitary forces cleaned) [eV/Ang]:" in line or "Total atomic forces (unitary forces were cleaned, then relaxation constraints were applied) [eV/Ang]:" in line
+        if line_detected and not forces_block:
             parsing_forces = True
             # Skip empty lines before forces data starts
             while idx + 1 < len(lines) and lines[idx + 1].strip() == "":
@@ -166,7 +169,16 @@ def server(input, output, session):
 
         # Create 3D scatter plot of atoms
         df = {'x': [atom[0] for atom in atoms], 'y': [atom[1] for atom in atoms], 'z': [atom[2] for atom in atoms], 'element': [atom[3] for atom in atoms]}
-        fig = px.scatter_3d(df, x='x', y='y', z='z', color='element', title='Geometry Plot', width = 800, height = 600)
+        df_t = np.array(list([df['x'], df['y'], df['z']]))
+        axis_setting = dict(nticks = 6, range = [df_t.min().min() - 1, df_t.max().max() + 1])
+
+        fig = px.scatter_3d(df, x='x', y='y', z='z',
+                            color='element', title='Geometry Plot',
+                            width = 800, height = 600)
+        fig.update_layout(scene=dict(xaxis = axis_setting,
+                                yaxis = axis_setting,
+                                zaxis = axis_setting))
+
         return fig
 
     @output
