@@ -5,7 +5,6 @@ from shinywidgets import output_widget, render_widget
 import numpy as np
 import re
 from skspatial.objects import Plane
-import pandas as pd
 
 # Define UI components
 app_ui = ui.page_sidebar(
@@ -188,6 +187,7 @@ def server(input, output, session):
         if input.file_input() is None or input.atom_selection() == "":
             return "Please upload files and select atoms."
 
+        custom_axis = input.input_axis()
         # Load the first file for simplicity (extendable to multiple files)
         file_info = input.file_input()[0]
         with open(file_info["datapath"], 'r') as f: file_content = f.read()
@@ -201,10 +201,12 @@ def server(input, output, session):
         # Calculate total momentum
         if not forces:
             return "No forces data found."
+
+        if custom_axis:
+            chosen_id = [int(x) for x in input.chosen_id().split(",")]
+        else:
+            chosen_id = None
         try:
-            custom_axis = input.input_axis()
-            if custom_axis:
-                chosen_id = [int(x) for x in input.chosen_id().split(",")]
             total_momentum = calculate_momentum(geometry, forces, selected_atoms, custom_axis, chosen_id)
             return f"Total Momentum: {total_momentum} (eV)"
         except ValueError as e:
